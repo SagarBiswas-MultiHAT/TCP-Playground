@@ -1,6 +1,17 @@
+import socket
+
 import pytest
 
-from net_utils import parse_port, resolve_host, validate_port_arg, validate_timeout
+from net_utils import (
+    decrypt_text,
+    encrypt_text,
+    parse_port,
+    recv_packet,
+    resolve_host,
+    send_packet,
+    validate_port_arg,
+    validate_timeout,
+)
 
 
 def test_parse_port_valid():
@@ -36,3 +47,39 @@ def test_validate_timeout():
     assert validate_timeout(2.5) == 2.5
     with pytest.raises(ValueError):
         validate_timeout(-1)
+
+
+def test_encrypt_decrypt_roundtrip():
+    plain = "hello secure world"
+    password = "super-secret"
+    encrypted = encrypt_text(plain, password)
+    assert encrypted != plain
+    assert decrypt_text(encrypted, password) == plain
+
+
+def test_decrypt_with_wrong_password_fails():
+    encrypted = encrypt_text("message", "good-password")
+    with pytest.raises(ValueError):
+        decrypt_text(encrypted, "bad-password")
+
+
+def test_send_and_receive_packet():
+    server, client = socket.socketpair()
+    try:
+        send_packet(server, {"type": "hello", "secure": False})
+        packet = recv_packet(client, bytearray())
+        assert packet == {"type": "hello", "secure": False}
+    finally:
+        server.close()
+        client.close()
+
+
+def test_recv_packet_rejects_invalid_json():
+    server, client = socket.socketpair()
+    try:
+        server.sendall(b"not-json\n")
+        with pytest.raises(ValueError):
+            recv_packet(client, bytearray())
+    finally:
+        server.close()
+        client.close()

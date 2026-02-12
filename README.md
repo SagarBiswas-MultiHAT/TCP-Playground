@@ -1,199 +1,254 @@
 # Network Communication Scripts
 
+A practical TCP chat playground in pure Python with:
+
+- multi-client support
+- optional secure mode (TLS + password-based message encryption)
+- interactive CLI prompts for quick local testing
+- lightweight unit tests and GitHub Actions CI
+
+The client filename is intentionally `clint.py`.
+
 ---
 
-![alt text](pics/image.png)
+## What this project does
+
+This repository contains two runnable scripts:
+
+- `host.py` — starts the chat server and accepts multiple clients.
+- `clint.py` — connects a client to the server and joins the chat.
+
+It is designed for learning, demos, and LAN experiments. The code is intentionally straightforward so you can understand and extend it quickly.
 
 ---
 
-Small, human-friendly toolkit to demonstrate simple TCP client/server communication using Python.
+## Feature overview
 
-This repository contains two scripts:
-
-- host.py — a minimal TCP listener (server)
-- clint.py — a minimal TCP client that connects to host.py
-
-Both scripts are intentionally small for learning and ad-hoc testing. They are implemented in pure Python and work on Windows, macOS, and Linux with Python 3.9+.
-
-Note: the client file name is clint.py (intentionally kept as-is).
+- **Multiple clients** can connect to one host at the same time.
+- **Broadcast chat**: each message is delivered to all connected clients.
+- **Join/leave events** are announced in real time.
+- **Live connected count** is shown as clients join/leave.
+- **Secure mode** (optional):
+  - TLS transport
+  - password authentication at connect time
+  - password-based message encryption on top of TLS
+- **Smart client prompt**: client asks for password only when server says secure mode is enabled.
 
 ---
 
 ## Requirements
 
-- Python 3.9 or newer
-- No external runtime dependencies
+- Python 3.9+
+- `pip`
+
+Runtime dependencies are from the standard library. Test dependency is listed in `requirements.txt`.
+
+Install test tools:
+
+```powershell
+pip install -r requirements.txt
+```
 
 ---
 
-## Quick Start — interactive mode
+## Quick start (interactive)
 
-Open two terminals on the same machine (or on two machines on the same LAN).
+Open one terminal for host and one or more terminals for clients.
 
-1. Start the server (prompts for port):
+### 1) Start host
 
 ```powershell
 python -u host.py
 ```
 
-2. Start the client (prompts for host/port):
+Example:
+
+```text
+Enter the port you want to listen on: 12345
+Encrypt the communication? [y/N]: y
+Set password:
+Listening on 127.0.0.1:12345... (Ctrl-C to stop)
+Security mode: ENCRYPTED
+```
+
+### 2) Start first client
 
 ```powershell
 python -u clint.py
 ```
 
-Once connected, anything you type in either terminal will be sent to the other side (line-buffered). Press Ctrl-C to stop.
+Example:
+
+```text
+Enter the IP address of the server: 127.0.0.1
+Enter the port you want to connect to: 12345
+Enter password:
+Authenticated as clint1
+Connected to 127.0.0.1:12345
+```
+
+### 3) Start more clients
+
+Run `python -u clint.py` again in additional terminals. Each one gets a unique name (`clint2`, `clint3`, ...), receives join/leave updates, and participates in the same room.
 
 ---
 
-## CLI usage (non-interactive)
+## Command-line usage
 
-Server:
-
-```powershell
-python -u "h:\GitHub Clone\Network_Communication_Scripts\host.py" --bind 0.0.0.0 --port 12345
-```
-
-Client:
+### Host
 
 ```powershell
-python -u "h:\GitHub Clone\Network_Communication_Scripts\clint.py" --host 127.0.0.1 --port 12345
+python -u host.py --bind 0.0.0.0 --port 12345 --timeout 0
 ```
 
-Optional flags (both scripts):
+Common host options:
 
-- --timeout <seconds> (0 = blocking)
-- --tls (enable TLS)
-- --tls-insecure (disable TLS verification; local testing only)
-- --cert / --key (server only, required for TLS)
+- `--bind` bind address (default empty = all interfaces)
+- `--port` port number
+- `--timeout` socket timeout in seconds (0 = blocking)
+- `--secure` force secure mode without prompt
+- `--password` secure mode password (if omitted, host prompts)
+- `--tls --cert --key` explicit TLS config
+
+> Note: if secure mode is enabled, host enforces TLS.
+
+### Client
+
+```powershell
+python -u clint.py --host 127.0.0.1 --port 12345
+```
+
+Common client options:
+
+- `--host` server host/IP
+- `--port` server port
+- `--timeout` socket timeout
+- `--password` pre-supply secure password (optional)
+- `--tls` force TLS connection attempt first
+- `--tls-insecure` disable certificate verification for local/self-signed testing
 
 ---
 
-## TLS (optional)
+## Security model
 
-To encrypt traffic, pass --tls on both sides and provide a certificate and key to the server.
+When secure mode is ON:
 
-Example (generate a self-signed cert with OpenSSL):
+1. Server uses TLS for transport.
+2. Client receives handshake metadata and knows secure mode is required.
+3. Client prompts for password only in this case.
+4. Server validates password before admitting the client.
+5. Chat messages are additionally encrypted at the application layer.
+
+When secure mode is OFF:
+
+- no password prompt
+- plaintext application messages
+- regular TCP transport unless you explicitly use TLS flags
+
+### Generate a self-signed certificate (local testing)
 
 ```powershell
 openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem -days 365
 ```
 
-Server:
+Then run host with:
 
 ```powershell
-python -u "h:\GitHub Clone\Network_Communication_Scripts\host.py" --port 12345 --tls --cert cert.pem --key key.pem
+python -u host.py --port 12345 --secure --password mypass --tls --cert cert.pem --key key.pem
 ```
 
-Client (with verification disabled for self-signed certs):
+And run client with:
 
 ```powershell
-python -u "h:\GitHub Clone\Network_Communication_Scripts\clint.py" --host 127.0.0.1 --port 12345 --tls --tls-insecure
+python -u clint.py --host 127.0.0.1 --port 12345 --tls --tls-insecure
 ```
 
 ---
 
-## Behavior and design notes
+## Typical terminal experience
 
-- Single connection at a time (intentionally simple)
-- Messages are exchanged as text, line-buffered
-- Input is validated: ports must be 1–65535, hosts must resolve
-- The server binds to all interfaces by default (so it can accept LAN connections)
+Host side (example):
+
+```text
+Connection from 127.0.0.1:49207
+clint1 joined from 127.0.0.1:49207
++ Total connected clints: [1]
+Connection from 127.0.0.1:49222
+clint2 joined from 127.0.0.1:49222
++ Total connected clints: [2]
+clint1: hello everyone
+clint2: hi!
+```
+
+Client side (example):
+
+```text
+Connected to 127.0.0.1:12345
+clint1 joined from 127.0.0.1:49207
++ Total connected clints: [1]
+clint2 joined from 127.0.0.1:49222
++ Total connected clints: [2]
+clint1: hello everyone
+```
+
+---
+
+## Tests
+
+Run all tests:
+
+```powershell
+pytest -q
+```
+
+Current tests focus on utility and protocol helpers in `net_utils.py`:
+
+- input validation (port/timeout/host)
+- encryption/decryption behavior
+- protocol packet framing and parsing
+
+---
+
+## GitHub Actions CI
+
+Workflow file: `.github/workflows/python-ci.yml`
+
+It runs on push and pull request across Python `3.9`, `3.10`, `3.11`, and `3.12`, then executes `pytest -q`.
+
+If CI fails, start with:
+
+```powershell
+pip install -r requirements.txt
+pytest -q
+```
+
+---
+
+## Project structure
+
+```text
+host.py          # Multi-client server
+clint.py         # Interactive client
+net_utils.py     # Shared validation, protocol, encryption helpers
+tests/           # Unit tests
+```
 
 ---
 
 ## Troubleshooting
 
-- Connection refused: verify the server is running, the port is correct, and firewall rules allow inbound TCP.
-- Wrong IP: run ipconfig (Windows) or ip addr (Linux/macOS) on the server machine and use that IP.
-- Garbled text: binary data is not preserved; decoding uses error replacement.
+- **Connection refused**: host is not running, wrong host/port, or firewall blocked.
+- **TLS handshake failed**: certificate/key mismatch or client verification settings.
+- **Authentication failed**: wrong secure-mode password.
+- **No password prompt on client**: server is in plaintext mode.
+- **Password prompt appears unexpectedly**: server is running secure mode on that port.
 
 ---
 
-## Tests and CI
+## Notes for contributors
 
-Run tests locally:
+- Keep changes small and testable.
+- Prefer extending `net_utils.py` for shared protocol logic.
+- Add/adjust tests for behavior changes before merging.
 
-```powershell
-pip install -r requirements.txt
-pytest -q
-```
-
-GitHub Actions workflow is defined in .github/workflows/python-ci.yml.
-
-## Developer notes — `net_utils.py`
-
-This project includes a compact, well‑tested helper module, `net_utils.py`, which both `host.py` and `clint.py` import.
-
-Purpose
-
-- Reduce duplication and keep CLI behavior consistent across the server and client.
-- Provide small, easy-to-unit-test utilities for parsing, validating and prompting for network input.
-
-What’s in the module (at-a-glance)
-
-- `parse_port(value: str) -> Optional[int]` — safely parse user port input. Returns an int in 1–65535 or `None` on invalid input.
-- `resolve_host(value: str) -> Optional[str]` — quick validation of an IP address or hostname; returns the original string when resolvable, otherwise `None`.
-- `prompt_for_port(prompt: str) -> int` / `prompt_for_host(prompt: str) -> str` — interactive prompts that validate input and raise `ValueError` on invalid responses (used by the interactive CLI flows).
-- `add_common_args(parser: argparse.ArgumentParser) -> None` — attaches the shared CLI flags used by both scripts: `--port`, `--timeout`, `--tls`, `--cert`, `--key`, and `--tls-insecure`.
-- `validate_port_arg(value: Optional[int]) -> Optional[int]` / `validate_timeout(value: float) -> float` — argument validators used by entrypoints to normalize and check CLI-supplied values.
-
-Why this design helps
-
-- Consistency: both entrypoints present identical flags and validation behavior.
-- Testability: logic that is easy to unit-test (see `tests/test_net_utils.py`) is separated from interactive and network code.
-- Extensibility: adding new shared options (for example `--bind` validation or TLS context helpers) is a single change.
-
-Quick examples
-
-Importing validation helpers in the server:
-
-```python
-from net_utils import add_common_args, validate_port_arg
-
-parser = argparse.ArgumentParser()
-add_common_args(parser)
-args = parser.parse_args()
-port = validate_port_arg(args.port)
-```
-
-Interactive prompt usage in the client:
-
-```python
-from net_utils import prompt_for_host, prompt_for_port
-
-host = prompt_for_host("Enter the IP address of the server: ")
-port = prompt_for_port("Enter the port you want to connect to: ")
-```
-
-Testing
-
-- Unit tests for parsing and validation live in `tests/test_net_utils.py`. Run them locally with:
-
-```powershell
-pip install -r requirements.txt
-pytest -q
-```
-
-Recommended next steps (for maintainers)
-
-- Add concise docstrings to each function in `net_utils.py` (helps IDEs and new contributors).
-- Consider moving TLS context creation (client/server wrap functions) into `net_utils.py` if you want to centralize TLS behavior and testing.
-- Add more validation utilities (e.g., `validate_bind_address`) if you expose `--bind` or other network flags.
-
-Notes
-
-- The functions intentionally return `None` or raise `ValueError` rather than exit the process — this keeps them safe to use in both scripts and in unit tests.
-- Keep `net_utils.py` small: its value is in being lightweight and easy to test.
-
----
-
-## Security reminder
-
-These scripts are intended for learning and quick experiments only. They do not implement authentication or authorization. Use TLS if traffic must be protected and do not expose the server to untrusted networks.
-
----
-
-## Contributing
-
-Contributions welcome. Open an issue or a pull request with a clear description of the change and why it helps.
+Contributions and improvements are welcome.
