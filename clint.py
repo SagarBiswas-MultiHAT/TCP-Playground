@@ -9,6 +9,7 @@ from net_utils import (
     decrypt_text,
     encrypt_text,
     prompt_for_host,
+    prompt_for_name,
     prompt_password,
     prompt_for_port,
     recv_packet,
@@ -27,6 +28,11 @@ def parse_args() -> argparse.Namespace:
         help="Server IP/hostname. If omitted, prompts interactively.",
     )
     parser.add_argument(
+        "--name",
+        type=str,
+        help="Display name in chat. If omitted, prompts interactively.",
+    )
+    parser.add_argument(
         "--password",
         type=str,
         help="Password for secure mode. If omitted and required, prompts interactively.",
@@ -35,11 +41,16 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def wrap_tls_client(sock: socket.socket, host: str, insecure: bool) -> ssl.SSLSocket:
+def wrap_tls_client(
+    sock: socket.socket,
+    host: str,
+    insecure: bool,
+    ca_cert: Optional[str] = None,
+) -> ssl.SSLSocket:
     if insecure:
         context = ssl._create_unverified_context()
         return context.wrap_socket(sock, server_hostname=host)
-    context = ssl.create_default_context()
+    context = ssl.create_default_context(cafile=ca_cert) if ca_cert else ssl.create_default_context()
     return context.wrap_socket(sock, server_hostname=host)
 
 
@@ -57,8 +68,9 @@ def connect_and_handshake(
     timeout: float,
     force_tls: bool,
     tls_insecure: bool,
+    tls_ca_cert: Optional[str],
 ) -> Tuple[socket.socket, Dict[str, object], bool, bytearray]:
-    attempts = [True] if force_tls else [False, True]
+    attempts = [True] if force_tls else [True, False]
     last_error: Optional[Exception] = None
 
     for use_tls in attempts:
@@ -66,7 +78,7 @@ def connect_and_handshake(
         try:
             sock = connect_socket(host, port, timeout)
             if use_tls:
-                sock = wrap_tls_client(sock, host, tls_insecure)
+                sock = wrap_tls_client(sock, host, tls_insecure, tls_ca_cert)
             buffer = bytearray()
             hello = recv_packet(sock, buffer)
             if hello is None or hello.get("type") != "hello":
@@ -74,6 +86,18 @@ def connect_and_handshake(
             return sock, hello, use_tls, buffer
         except Exception as exc:
             last_error = exc
+
+            if use_tls and isinstance(exc, ssl.SSLCertVerificationError) and not tls_insecure:
+                cert_hint = ""
+                if tls_ca_cert:
+                    cert_hint = f" (--cert={tls_ca_cert})"
+                raise RuntimeError(
+                    "TLS certificate verification failed. "
+                    "For local self-signed certs, retry with --tls-insecure "
+                    "or trust the server cert using --cert <cert.pem>"
+                    f"{cert_hint}."
+                ) from exc
+
             if sock is not None:
                 try:
                     sock.close()
@@ -112,6 +136,14 @@ def main() -> int:
             print(str(exc))
             return 1
 
+    user_name = args.name
+    if not user_name:
+        try:
+            user_name = prompt_for_name("Enter your user name: ")
+        except ValueError as exc:
+            print(str(exc))
+            return 1
+
     try:
         sock, hello_packet, using_tls, buffer = connect_and_handshake(
             host=host,
@@ -119,6 +151,7 @@ def main() -> int:
             timeout=timeout,
             force_tls=args.tls,
             tls_insecure=args.tls_insecure,
+            tls_ca_cert=args.cert,
         )
     except Exception as exc:
         print(str(exc))
@@ -140,7 +173,7 @@ def main() -> int:
                 print(str(exc))
                 sock.close()
                 return 1
-        send_packet(sock, {"type": "auth", "password": session_password})
+        send_packet(sock, {"type": "auth", "name": user_name, "password": session_password})
         auth_packet = recv_packet(sock, buffer)
         if auth_packet is None or auth_packet.get("type") != "auth_result":
             print("Authentication failed: no valid server response.")
@@ -151,8 +184,9 @@ def main() -> int:
             sock.close()
             return 1
         client_name = str(auth_packet.get("client_name", "unknown"))
-        print(f"Authenticated as {client_name}")
+        print(f"\nAuthenticated as {client_name}")
     else:
+        send_packet(sock, {"type": "auth", "name": user_name})
         auth_packet = recv_packet(sock, buffer)
         if auth_packet is None or auth_packet.get("type") != "auth_result" or not bool(auth_packet.get("ok", False)):
             print("Connection rejected by server.")
@@ -189,13 +223,15 @@ def main() -> int:
 
                 packet_type = str(packet.get("type", ""))
                 if packet_type == "count":
-                    print(f"+ Total connected clints: [{packet.get('total', '?')}]")
+                    print(f"+ Total connected clints: [{packet.get('total', '?')}]\n")
                     continue
 
                 if packet_type == "chat":
                     sender = str(packet.get("from", "unknown"))
                     text = decode_packet_text(packet)
-                    print(f"{sender}: {text}")
+                    port = packet.get("port")
+                    sender_display = f"{sender}[{port}]" if isinstance(port, int) else sender
+                    print(f"..:: {sender_display}: {text}")
                     continue
 
                 if packet_type == "system":

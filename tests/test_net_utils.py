@@ -9,6 +9,7 @@ from net_utils import (
     recv_packet,
     resolve_host,
     send_packet,
+    validate_client_name,
     validate_port_arg,
     validate_timeout,
 )
@@ -47,6 +48,20 @@ def test_validate_timeout():
     assert validate_timeout(2.5) == 2.5
     with pytest.raises(ValueError):
         validate_timeout(-1)
+
+
+def test_validate_client_name_valid():
+    assert validate_client_name("Sagar") == "Sagar"
+    assert validate_client_name("  Alice  ") == "Alice"
+
+
+def test_validate_client_name_invalid():
+    with pytest.raises(ValueError):
+        validate_client_name("")
+    with pytest.raises(ValueError):
+        validate_client_name(" " * 5)
+    with pytest.raises(ValueError):
+        validate_client_name("x" * 25)
 
 
 def test_encrypt_decrypt_roundtrip():

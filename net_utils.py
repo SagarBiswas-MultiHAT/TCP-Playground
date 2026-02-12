@@ -35,7 +35,7 @@ def resolve_host(value: str) -> Optional[str]:
 
 
 def prompt_for_port(prompt: str) -> int:
-    port_str = input(prompt)
+    port_str = input(f"--> {prompt}")
     port = parse_port(port_str)
     if port is None:
         raise ValueError("Invalid port number. Please enter a number between 1 and 65535.")
@@ -43,7 +43,7 @@ def prompt_for_port(prompt: str) -> int:
 
 
 def prompt_for_host(prompt: str) -> str:
-    host = input(prompt).strip()
+    host = input(f"--> {prompt}").strip()
     resolved = resolve_host(host)
     if resolved is None:
         raise ValueError("Invalid host or IP address.")
@@ -92,17 +92,31 @@ def validate_timeout(value: float) -> float:
 
 def prompt_yes_no(prompt: str, default: bool = False) -> bool:
     suffix = "[Y/n]" if default else "[y/N]"
-    raw = input(f"{prompt} {suffix}: ").strip().lower()
+    raw = input(f"--> {prompt} {suffix}: ").strip().lower()
     if not raw:
         return default
     return raw in {"y", "yes"}
 
 
 def prompt_password(prompt: str) -> str:
-    password = getpass.getpass(prompt)
+    password = getpass.getpass(f"--> {prompt}")
     if not password:
         raise ValueError("Password cannot be empty.")
     return password
+
+
+def validate_client_name(value: str) -> str:
+    name = value.strip()
+    if not name:
+        raise ValueError("Name cannot be empty.")
+    if len(name) > 24:
+        raise ValueError("Name must be 24 characters or fewer.")
+    return name
+
+
+def prompt_for_name(prompt: str) -> str:
+    raw = input(f"\n--> {prompt}")
+    return validate_client_name(raw)
 
 
 def _keystream(key: bytes, nonce: bytes, length: int) -> bytes:

@@ -11,6 +11,7 @@ from net_utils import (
     add_common_args,
     decrypt_text,
     encrypt_text,
+    validate_client_name,
     prompt_for_port,
     prompt_password,
     prompt_yes_no,
@@ -105,16 +106,22 @@ def main() -> int:
     stop_event = threading.Event()
     clients: Dict[str, ClientSession] = {}
     clients_lock = threading.Lock()
-    next_client_num = 1
 
     def send_threadsafe(client: ClientSession, packet: Dict[str, object]) -> None:
         with client.send_lock:
             send_packet(client.conn, packet)
 
-    def build_text_payload(message_type: str, text: str, sender: Optional[str] = None) -> Dict[str, object]:
+    def build_text_payload(
+        message_type: str,
+        text: str,
+        sender: Optional[str] = None,
+        port: Optional[int] = None,
+    ) -> Dict[str, object]:
         packet: Dict[str, object] = {"type": message_type, "encrypted": secure_mode}
         if sender is not None:
             packet["from"] = sender
+        if port is not None:
+            packet["port"] = port
         if secure_mode:
             packet["payload"] = encrypt_text(text, secure_password or "")
         else:
@@ -147,7 +154,7 @@ def main() -> int:
     def publish_count() -> None:
         with clients_lock:
             total = len(clients)
-        print(f"+ Total connected clints: [{total}]")
+        print(f"+ Total connected clints: [{total}]\n")
         broadcast({"type": "count", "total": total})
 
     def announce_system(message: str) -> None:
@@ -179,11 +186,13 @@ def main() -> int:
                     continue
 
                 message = text.rstrip("\r\n")
-                print(f"{client.name}: {message}")
-                broadcast(build_text_payload("chat", message, sender=client.name))
+                print(f"..:: {client.name}[{client.addr[1]}]: {message}")
+                broadcast(
+                    build_text_payload("chat", message, sender=client.name, port=client.addr[1])
+                )
         except Exception as exc:
             if not stop_event.is_set():
-                print(f"Receive error from {client.name}: {exc}")
+                print(f"\nReceive error from {client.name}: {exc}")
         finally:
             removed = remove_client(client.name)
             if removed is not None:
@@ -191,11 +200,10 @@ def main() -> int:
                     removed.conn.close()
                 except Exception:
                     pass
-                announce_system(f"{client.name} disconnected.")
+                announce_system(f"\n{client.name} disconnected.\n")
                 publish_count()
 
     def accept_loop() -> None:
-        nonlocal next_client_num
         while not stop_event.is_set():
             try:
                 conn, addr = sock.accept()
@@ -208,7 +216,7 @@ def main() -> int:
                     print(f"Accept error: {exc}")
                 continue
 
-            print(f"Connection from {addr[0]}:{addr[1]}")
+            print(f"\nConnection from {addr[0]}:{addr[1]}")
 
             if args.tls:
                 try:
@@ -239,15 +247,40 @@ def main() -> int:
                         send_packet(conn, {"type": "auth_result", "ok": False, "reason": "Wrong password."})
                         conn.close()
                         continue
+                else:
+                    auth_packet = recv_packet(conn, buffer)
+                    if auth_packet is None:
+                        conn.close()
+                        continue
+                    if auth_packet.get("type") != "auth":
+                        send_packet(conn, {"type": "auth_result", "ok": False, "reason": "Authentication required."})
+                        conn.close()
+                        continue
+
+                try:
+                    requested_name = validate_client_name(str(auth_packet.get("name", "")))
+                except ValueError:
+                    send_packet(conn, {"type": "auth_result", "ok": False, "reason": "Invalid name."})
+                    conn.close()
+                    continue
 
                 with clients_lock:
-                    client_name = f"clint{next_client_num}"
-                    next_client_num += 1
+                    existing = set(clients.keys())
+                    if requested_name not in existing:
+                        client_name = requested_name
+                    else:
+                        suffix = 2
+                        while True:
+                            candidate = f"{requested_name}-{suffix}"
+                            if candidate not in existing:
+                                client_name = candidate
+                                break
+                            suffix += 1
                     client = ClientSession(conn=conn, addr=addr, name=client_name, buffer=buffer)
                     clients[client_name] = client
 
                 send_threadsafe(client, {"type": "auth_result", "ok": True, "client_name": client_name})
-                announce_system(f"{client_name} joined from {addr[0]}:{addr[1]}")
+                announce_system(f"\n{client_name} joined from {addr[0]}:{addr[1]}")
                 publish_count()
                 threading.Thread(target=handle_client, args=(client,), daemon=True).start()
             except Exception as exc:
@@ -267,7 +300,7 @@ def main() -> int:
                 message = line.rstrip("\r\n")
                 if not message:
                     continue
-                print(f"server: {message}")
+                print(f"..:: server: {message}")
                 broadcast(build_text_payload("chat", message, sender="server"))
         except Exception as exc:
             if not stop_event.is_set():
