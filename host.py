@@ -56,7 +56,7 @@ def main() -> int:
         sock.settimeout(timeout)
     sock.bind((args.bind, port))
     sock.listen(1)
-    print(f"Listening on {args.bind or '0.0.0.0'}:{port}... (Ctrl-C to stop)")
+    print(f"Listening on {args.bind or '127.0.0.1'}:{port}... (Ctrl-C to stop)")
 
     try:
         conn, addr = sock.accept()

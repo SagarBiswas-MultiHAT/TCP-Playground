@@ -1,5 +1,11 @@
 # Network Communication Scripts
 
+---
+
+![alt text](pics/image.png)
+
+---
+
 Small, human-friendly toolkit to demonstrate simple TCP client/server communication using Python.
 
 This repository contains two scripts:
@@ -27,13 +33,13 @@ Open two terminals on the same machine (or on two machines on the same LAN).
 1. Start the server (prompts for port):
 
 ```powershell
-python -u "h:\GitHub Clone\Network_Communication_Scripts\host.py"
+python -u host.py
 ```
 
 2. Start the client (prompts for host/port):
 
 ```powershell
-python -u "h:\GitHub Clone\Network_Communication_Scripts\clint.py"
+python -u clint.py
 ```
 
 Once connected, anything you type in either terminal will be sent to the other side (line-buffered). Press Ctrl-C to stop.
