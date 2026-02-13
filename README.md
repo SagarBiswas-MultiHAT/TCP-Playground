@@ -2,6 +2,9 @@
 
 A simple multi-client TCP chat app in Python, built for learning and practical local/LAN testing.
 
+
+![ckecking](pics/image.png)
+
 This project gives you:
 - a server (`host.py`)
 - a client (`clint.py`)

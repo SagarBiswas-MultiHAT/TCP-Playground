@@ -101,7 +101,7 @@ def main() -> int:
     sock.bind((args.bind, port))
     sock.listen(128)
     sock.settimeout(0.5)
-    print(f"Listening on {args.bind or '127.0.0.1'}:{port}... (Ctrl-C to stop)")
+    print(f"\nListening on {args.bind or '127.0.0.1'}:{port}... (Ctrl-C to stop)")
     print(f"Security mode: {'ENCRYPTED' if secure_mode else 'PLAINTEXT'}")
     stop_event = threading.Event()
     clients: Dict[str, ClientSession] = {}
