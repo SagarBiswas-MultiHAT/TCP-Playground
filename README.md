@@ -1,5 +1,19 @@
 # Network Communication Scripts
 
+<div align="right">
+
+![CI](https://github.com/SagarBiswas-MultiHAT/TCP-Playground/actions/workflows/python-ci.yml/badge.svg) 
+&nbsp;
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
+&nbsp; 
+![License](https://img.shields.io/badge/license-MIT-green) 
+&nbsp;
+![Last commit](https://img.shields.io/github/last-commit/SagarBiswas-MultiHAT/TCP-Playground) 
+&nbsp;
+![Issues](https://img.shields.io/github/issues/SagarBiswas-MultiHAT/TCP-Playground)
+
+</div>
+
 A simple multi-client TCP chat app in Python, built for learning and practical local/LAN testing.
 
 
